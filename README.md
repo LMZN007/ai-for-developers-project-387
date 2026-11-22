@@ -33,6 +33,58 @@ mise run start   # http://localhost:3000
 - обсуждения отдельных решений — тикеты [#2–#11](https://github.com/LMZN007/ai-for-developers-project-386/issues?q=is%3Aissue+label%3Awayfinder%3Agrilling%2Cwayfinder%3Aresearch%2Cwayfinder%3Aprototype) первого проекта;
 - архитектурные решения перенесены сюда — [`docs/adr/`](docs/adr/), словарь терминов — [`GLOSSARY.md`](GLOSSARY.md).
 
+## Агент в GitHub
+
+В репозитории работает агент Claude Code ([`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action)): он отвечает на команды доверенных участников в issues и PR. Воркфлоу — [`.github/workflows/claude.yml`](.github/workflows/claude.yml), в Actions он называется «Claude agent».
+
+### Событие и кто может запустить
+
+Воркфлоу срабатывает на `issue_comment` и `pull_request_review_comment` с `types: [created]`, то есть на новый комментарий в issue, в PR или в ревью-комментарии к коду. Запускается, только если:
+
+- в комментарии есть `/oc`;
+- автор комментария — `OWNER`, `MEMBER` или `COLLABORATOR` (дополнительно сам action отклоняет авторов без права записи);
+- автор — не бот, комментарии ботов игнорируются.
+
+Код PR из fork агент не берёт: `allow_fork_prs: "false"`.
+
+### Команда вызова
+
+`/oc <задача>` — это `trigger_phrase: /oc`, аналог `mentions` у OpenCode. Примеры:
+
+- `/oc explain this issue` — объяснить задачу;
+- `/oc прочитай docs/agents/ и ответь, какой у проекта трекер, ничего не меняя` — ответ без изменений в коде;
+- `/oc исправь задачу: <что именно>` — внести правки и подготовить ветку.
+
+### Модель и доступ
+
+- Модель: `claude-sonnet-5-5` (`claude_args: --model claude-sonnet-5-5`).
+- Работает на подписке Claude владельца, платного API-ключа нет. Токен подписки лежит в секрете `CLAUDE_CODE_OAUTH_TOKEN` (получен командой `claude setup-token`).
+- Тайм-аут прогона — 30 минут. Прогон один на issue или PR (`concurrency`): новая команда ждёт окончания предыдущей, а не отменяет её.
+- mise ставит те же инструменты, что и в CI, чтобы агент мог выполнить `mise run check`.
+
+### Назначение и результаты
+
+Агент отвечает на вопросы, разбирает задачи и вносит правки по команде. Результаты:
+
+- ответ комментарием в issue или PR от имени `claude[bot]` со ссылкой на прогон в Actions;
+- если нужны изменения — ветка `claude/...` и ссылка на создание PR.
+
+Прогоны смотрите на вкладке [Actions](https://github.com/LMZN007/ai-for-developers-project-387/actions), воркфлоу «Claude agent».
+
+### Права
+
+У задания воркфлоу: `contents: read`, `id-token: write`, `pull-requests: read` (чтобы action видел, что PR из fork). У `actions/checkout` включено `persist-credentials: false`.
+
+Комментирует и пушит не `GITHUB_TOKEN`, а токен Claude GitHub App: action обменивает на него OIDC-токен (`id-token: write`). Поэтому действия видны от имени приложения `claude[bot]`, а не `github-actions`, а токен самого воркфлоу только читает. Приложение установлено только на этот репозиторий.
+
+### Почему Claude, а не OpenCode
+
+Задание допускает другого агента с теми же сценариями. OpenCode в Actions работает через API-ключ провайдера модели, а подписку Claude к стороннему агенту подключать нельзя. Claude Code работает с подпиской официально, поэтому выбран он.
+
+### Решение по `share`
+
+У Claude Code параметра `share` нет, сессии наружу не публикуются. У OpenCode `share` в action v1.19.6 помечен как устаревший и игнорируется, так что публичных ссылок на сессии не было бы и там.
+
 ## Как работает текущая версия
 
 Ниже — исходный сценарий курса. Сервис реализует его по согласованной [спецификации](https://github.com/LMZN007/ai-for-developers-project-386/issues/12) с такими упрощениями:

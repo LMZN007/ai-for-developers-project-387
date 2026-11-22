@@ -1,0 +1,59 @@
+name: Claude agent
+
+# The Claude Code agent answers `/oc` in issue and PR comments: it replies in the thread, or creates
+# a branch and opens a PR. It acts as the Claude GitHub App (`claude[bot]`) and runs on the owner's
+# Claude subscription (CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`).
+on:
+  # issue_comment runs with secrets. The job `if` admits only OWNER/MEMBER/COLLABORATOR and no bots,
+  # the action itself rejects authors without write access, and `allow_fork_prs: "false"` keeps
+  # the code of fork pull requests out of the run.
+  # jactionlint ignore=dangerous-triggers
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+permissions: {}
+
+# One run per issue or PR at a time; a new command waits for the previous one instead of racing it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  claude:
+    if: >-
+      contains(github.event.comment.body, '/oc')
+      && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+      && github.event.comment.user.type != 'Bot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Standard mode: the action trades the OIDC token for a Claude App token, and that token comments
+    # and pushes. The workflow's own GITHUB_TOKEN only reads.
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read # lets the action see whether a PR comes from a fork
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      # The same tools as CI, so the agent can run `mise run check` before it opens a PR.
+      - name: Setup mise
+        uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@cb5e706113afc5dc4f36cdcf5d784ca88f351823 # v1.0.286
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          trigger_phrase: /oc
+          # The pinned action.yml defines this input; jactionlint checks against its bundled,
+          # older input list for anthropics/claude-code-action@v1.
+          # jactionlint ignore=unknown-action-input
+          allow_fork_prs: "false"
+          claude_args: --model claude-sonnet-5-5

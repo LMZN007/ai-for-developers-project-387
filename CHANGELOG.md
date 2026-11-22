@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/LMZN007/ai-for-developers-project-387/compare/v0.3.1...v0.4.0) (2026-11-22)
+
+
+### Features
+
+* автотриаж новых обращений ([#14](https://github.com/LMZN007/ai-for-developers-project-387/issues/14)) ([#15](https://github.com/LMZN007/ai-for-developers-project-387/issues/15)) ([c3e7bdb](https://github.com/LMZN007/ai-for-developers-project-387/commit/c3e7bdb3a2a0205265ca84b5f17c12d5003c9ac2))
+
 ## [0.3.1](https://github.com/LMZN007/ai-for-developers-project-387/compare/v0.3.0...v0.3.1) (2026-11-22)
 
 

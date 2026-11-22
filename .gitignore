@@ -28,3 +28,7 @@ generated/
 # Playwright run artifacts
 test-results/
 playwright-report/
+
+# Daily audit reports (artifact of the run, not committed)
+audit-report/
+.lighthouseci/

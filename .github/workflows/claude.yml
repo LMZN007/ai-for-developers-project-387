@@ -29,7 +29,9 @@ jobs:
       && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
       && github.event.comment.user.type != 'Bot'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The agent also implements specs (the `implement-spec` skill): subagents, tests, the checks and
+    # e2e take far longer than a reply in a thread, so the limit is 60 minutes.
+    timeout-minutes: 60
     # Standard mode: the action trades the OIDC token for a Claude App token, and that token comments
     # and pushes. The workflow's own GITHUB_TOKEN only reads.
     permissions:
@@ -48,6 +50,11 @@ jobs:
         uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # `mise run setup` already downloaded Chromium; Ubuntu also needs its system libraries, or the
+      # agent's `mise run check` fails at the e2e step.
+      - name: Install Chromium system libraries
+        run: mise exec -- pnpm --filter @calls-booking/e2e exec playwright install-deps chromium
 
       - name: Run Claude Code
         uses: anthropics/claude-code-action@cb5e706113afc5dc4f36cdcf5d784ca88f351823 # v1.0.286

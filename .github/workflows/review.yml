@@ -1,0 +1,132 @@
+name: Claude review
+
+# An independent review of every PR: a separate Claude session reads the diff against REVIEW.md and
+# the specification the PR links to, and leaves line comments and one summary comment. It does not
+# change code. It acts as the Claude GitHub App (`claude[bot]`) and runs on the owner's Claude
+# subscription (CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+# One review per PR at a time. A new push makes the review of the old commit obsolete, so the old
+# run is cancelled instead of finishing and commenting on code that is already gone.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Not for drafts (`ready_for_review` starts the review later) and not for fork PRs: a fork run has
+    # no secrets and no OIDC token, and the code of a fork must not reach an agent.
+    if: >-
+      github.event.pull_request.draft == false
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    # A review reads the diff, the specification and some code, then comments: a normal run takes a few
+    # minutes. 15 minutes cover a large PR, and a hung run does not hold a runner for 6 hours.
+    timeout-minutes: 15
+    # Standard mode: the action trades the OIDC token for a Claude App token, and that token comments.
+    # The workflow's own GITHUB_TOKEN only reads; `actions: read` is for the budget step alone.
+    permissions:
+      actions: read # the budget step lists the earlier runs of this workflow
+      contents: read
+      id-token: write
+      pull-requests: read
+    steps:
+      # The review budget is checked before the model is called. It counts by code, from the jobs of
+      # earlier runs for this PR: a run spent the budget if its model step started (success, failure
+      # or cancelled mid-way), and did not if the step was skipped. A refused run fails here, so its
+      # own model step is skipped and the refusal does not count against the PR.
+      - name: Check the review budget
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # Repository variable REVIEW_BUDGET; 3 when it is not set.
+          BUDGET: ${{ vars.REVIEW_BUDGET || '3' }}
+          MODEL_STEP: Run Claude review
+        run: |
+          set -euo pipefail
+
+          if ! [[ "$BUDGET" =~ ^[0-9]+$ ]]; then
+            echo "::error::REVIEW_BUDGET must be a whole number, got '$BUDGET'."
+            exit 1
+          fi
+
+          # Runs of this workflow for this PR, the current one excluded. A fork PR has an empty
+          # `pull_requests` list, but fork PRs never reach this job.
+          run_ids=$(gh api --paginate \
+            "repos/$REPO/actions/workflows/review.yml/runs?event=pull_request&per_page=100" \
+            --jq ".workflow_runs[]
+                   | select(.id != $RUN_ID)
+                   | select(any(.pull_requests[]?; .number == $PR_NUMBER))
+                   | .id")
+
+          used=0
+          for id in $run_ids; do
+            started=$(gh api --paginate "repos/$REPO/actions/runs/$id/jobs?per_page=100" \
+              --jq "[.jobs[].steps[]?
+                     | select(.name == \"$MODEL_STEP\")
+                     | select(.started_at != null and .conclusion != \"skipped\")]
+                    | length")
+            # --paginate prints one number per page; add them up.
+            for n in $started; do used=$((used + n)); done
+          done
+
+          echo "PR #$PR_NUMBER: $used earlier run(s) called the model, budget is $BUDGET."
+
+          if [ "$used" -ge "$BUDGET" ]; then
+            echo "::error title=Review budget exhausted::PR #$PR_NUMBER at $HEAD_SHA: $used earlier runs already called the model (budget $BUDGET, repository variable REVIEW_BUDGET). The model was not called. Logs: $RUN_URL"
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The step name is the key the budget step looks for: rename both together.
+      - name: Run Claude review
+        uses: anthropics/claude-code-action@cb5e706113afc5dc4f36cdcf5d784ca88f351823 # v1.0.286
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The agent's own commits to a PR branch are reviewed too (their author is `claude[bot]`).
+          allowed_bots: claude
+          prompt: |
+            Ты независимый ревьюер. Проверяешь PR #${{ github.event.pull_request.number }} в ${{ github.repository }}
+            (head ${{ github.event.pull_request.head.sha }}). Код, файлы и ветки не меняй:
+            ты только читаешь и комментируешь.
+
+            Порядок:
+            1. Прочитай `REVIEW.md` в корне: это критерии ревью. Прочитай также `GLOSSARY.md`
+               и `AGENTS.md`.
+            2. Прочитай описание PR: `gh pr view ${{ github.event.pull_request.number }}`. Найди в нём ссылку
+               на спецификацию и на тикеты и прочитай их через `gh issue view <номер>`
+               (для другого репозитория добавь `--repo <владелец/репозиторий>`).
+               Если ссылки на спецификацию нет, это замечание по критерию 1.
+               Если тикет или спецификацию прочитать не удалось, так и напиши в итоге.
+            3. Прочитай diff: `gh pr diff ${{ github.event.pull_request.number }}`; при необходимости открывай
+               файлы целиком.
+            4. Сверь diff с критериями `REVIEW.md` и со спецификацией: сценарии, пользовательские
+               истории, Implementation Decisions.
+
+            Как оформить:
+            - Замечание, привязанное к строке diff, оставь комментарием к этой строке
+              (инструмент `mcp__github_inline_comment__create_inline_comment`).
+            - Каждое замечание сопровождай ссылкой на критерий («REVIEW.md, п. N») или на пункт
+              спецификации (сценарий или номер user story) и скажи, как исправить.
+            - Не придумывай замечаний: если всё в порядке, так и напиши.
+            - В конце один общий комментарий (`gh pr comment ${{ github.event.pull_request.number }} --body ...`):
+              список замечаний по важности, что проверить не удалось, и вердикт —
+              «Можно мержить», «Нужны правки» или «Нельзя мержить».
+            Тексты пиши по-русски, по терминам `GLOSSARY.md`.
+          # Read-only on the code: no Edit/Write, and `gh` only reads and comments.
+          claude_args: >-
+            --model claude-sonnet-5-5
+            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh issue view:*)"

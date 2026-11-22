@@ -75,6 +75,8 @@ test("DELETE /bookings/{id} отменяет предстоящую запись
 // Негативные сценарии.
 test("DELETE /bookings/{id} с неизвестным id отвечает 404 not_found", async () => {
   await start();
+  // Маршрут существует: отмена другой записи проходит. Без этого 404 не отличить от «маршрута нет».
+  expect((await cancel("second")).status).toBe(204);
 
   const result = await cancel("no-such-booking");
 
@@ -84,7 +86,7 @@ test("DELETE /bookings/{id} с неизвестным id отвечает 404 no
 
 test("повторная отмена той же записи отвечает 404 not_found", async () => {
   await start();
-  await cancel("first");
+  expect((await cancel("first")).status).toBe(204);
 
   const result = await cancel("first");
 

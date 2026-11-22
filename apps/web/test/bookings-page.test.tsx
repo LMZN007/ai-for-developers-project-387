@@ -182,6 +182,32 @@ test.each([
   },
 );
 
+test("отмена записи: сетевая ошибка — сообщение об ошибке и список перечитывается", async () => {
+  let cancelled = false;
+  stubApi({
+    "GET /bookings": () => Response.json(cancelled ? [deepDive] : [consultation, deepDive]),
+    "DELETE /bookings/b1": () => {
+      cancelled = true;
+      throw new TypeError("Failed to fetch");
+    },
+  });
+  renderAt("/admin/bookings");
+
+  const row = (await screen.findByRole("cell", { name: "Иван Петров" })).closest("tr")!;
+  await userEvent.click(within(row).getByRole("button", { name: "Отменить запись" }));
+  await userEvent.click(
+    within(await screen.findByRole("dialog")).getByRole("button", { name: "Отменить запись" }),
+  );
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Не удалось отменить запись. Попробуйте ещё раз.",
+  );
+  // Список перечитан: после сбоя заглушка отдаёт уже обновлённые данные.
+  await waitFor(() =>
+    expect(screen.queryByRole("cell", { name: "Иван Петров" })).not.toBeInTheDocument(),
+  );
+});
+
 test("на телефоне запись отменяется из карточки", async () => {
   stubPhoneScreen();
   const calls = stubCancel(204);

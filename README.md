@@ -25,7 +25,7 @@ mise run start   # http://localhost:3000
 
 ## Откуда проект
 
-Это продолжение проекта [ai-for-developers-project-386](https://github.com/LMZN007/ai-for-developers-project-386): приложение перенесено оттуда вместе с тестами, линтерами, воркфлоу, `AGENTS.md`, скиллами и их настройками в `docs/agents/`. Задачи нового этапа ведутся в [Issues этого репозитория](https://github.com/LMZN007/ai-for-developers-project-387/issues).
+Это продолжение проекта [ai-for-developers-project-386](https://github.com/LMZN007/ai-for-developers-project-386): работа начинается с его версии [v0.2.0](https://github.com/LMZN007/ai-for-developers-project-386/releases/tag/v0.2.0) (коммит [`c229f79`](https://github.com/LMZN007/ai-for-developers-project-386/commit/c229f79)). Приложение перенесено оттуда вместе с тестами, линтерами, воркфлоу, `AGENTS.md`, скиллами и их настройками в `docs/agents/`. Задачи нового этапа ведутся в [Issues этого репозитория](https://github.com/LMZN007/ai-for-developers-project-387/issues).
 
 Исходные материалы остались в первом проекте:
 

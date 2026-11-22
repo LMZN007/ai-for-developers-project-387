@@ -22,6 +22,11 @@ export interface Store {
    * check and insert are one step, which is what keeps bookings from overlapping.
    */
   addBookingIfFree(booking: Booking): "added" | "time_conflict";
+  /**
+   * Deletes the booking unless it has started by `now`; the lookup, the check and the delete are
+   * one step, so a booking cannot start or be cancelled twice in between.
+   */
+  cancelBooking(id: string, now: Date): "cancelled" | "not_found" | "started";
 }
 
 export interface StoreContents {
@@ -57,6 +62,18 @@ export function createMemoryStore(initial: StoreContents = {}): Store {
       }
       bookings.push(structuredClone(booking));
       return "added";
+    },
+
+    cancelBooking(id, now) {
+      const index = bookings.findIndex((booking) => booking.id === id);
+      if (index === -1) {
+        return "not_found";
+      }
+      if (Date.parse(bookings[index]!.startsAt) <= now.getTime()) {
+        return "started";
+      }
+      bookings.splice(index, 1);
+      return "cancelled";
     },
   };
 }

@@ -113,3 +113,70 @@ test("владелец создаёт тип встречи, гость запи
     });
   });
 });
+
+// Cancellation: the owner removes an upcoming booking, its time is offered again, and another
+// guest books exactly that time. The event type is created through the API: the form is covered
+// by the scenario above.
+test("владелец отменяет запись, и другой гость записывается на освободившееся время", async ({
+  page,
+}) => {
+  const runId = Date.now().toString(36);
+  const title = `Отмена из браузерного теста ${runId}`;
+  const slug = `e2e-cancel-${runId}`;
+  const created = await page.request.post("/api/event-types", {
+    data: { title, slug, durationMinutes: 30 },
+  });
+  expect(created.status()).toBe(201);
+
+  const firstGuest = { name: "Иван Петров", email: `cancel.first.${runId}@example.com` };
+  const secondGuest = { name: "Анна Смирнова", email: `cancel.second.${runId}@example.com` };
+  let time = "";
+
+  const bookFirstFreeSlot = async (guest: { name: string; email: string }) => {
+    await page.goto(`/book/${slug}`);
+    await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+    const firstSlot = page
+      .getByRole("group", { name: "Свободное время" })
+      .getByRole("button")
+      .first();
+    const slotTime = (await firstSlot.textContent()) ?? "";
+    await firstSlot.click();
+    await page.getByRole("textbox", { name: /Имя/ }).fill(guest.name);
+    await page.getByRole("textbox", { name: /Email/ }).fill(guest.email);
+    await page.getByRole("button", { name: "Подтвердить" }).click();
+    await expect(page.getByRole("region", { name: "✓ Встреча запланирована" })).toBeVisible();
+    return slotTime;
+  };
+
+  const openBookings = async () => {
+    await page.getByRole("banner").getByRole("link", { name: "Для владельца" }).click();
+    await page.getByRole("tab", { name: "Записи" }).click();
+  };
+
+  await test.step("гость записывается на первый свободный слот", async () => {
+    time = await bookFirstFreeSlot(firstGuest);
+  });
+
+  await test.step("владелец отменяет запись: диалог, затем запись пропадает из «Предстоящих»", async () => {
+    await openBookings();
+    const row = page.getByRole("row").filter({ hasText: firstGuest.email });
+    await expect(row).toHaveCount(1);
+    await row.getByRole("button", { name: "Отменить запись" }).click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText(`Отменить запись гостя ${firstGuest.name} на`);
+    await dialog.getByRole("button", { name: "Отменить запись" }).click();
+
+    await expect(page.getByText("Запись отменена")).toBeVisible();
+    await expect(page.getByRole("row").filter({ hasText: firstGuest.email })).toHaveCount(0);
+  });
+
+  await test.step("другой гость записывается на то же время", async () => {
+    // The cancelled time is the first free slot again.
+    expect(await bookFirstFreeSlot(secondGuest)).toBe(time);
+
+    await openBookings();
+    await expect(page.getByRole("row").filter({ hasText: secondGuest.email })).toHaveCount(1);
+    await expect(page.getByRole("row").filter({ hasText: firstGuest.email })).toHaveCount(0);
+  });
+});

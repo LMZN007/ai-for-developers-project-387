@@ -77,6 +77,18 @@ mise run start   # http://localhost:3000
 
 Комментирует и пушит не `GITHUB_TOKEN`, а токен Claude GitHub App: action обменивает на него OIDC-токен (`id-token: write`). Поэтому действия видны от имени приложения `claude[bot]`, а не `github-actions`, а токен самого воркфлоу только читает. Приложение установлено только на этот репозиторий.
 
+### Автотриаж новых обращений
+
+Воркфлоу [`.github/workflows/triage.yml`](.github/workflows/triage.yml) («Claude triage») разбирает новые обращения без владельца: агент читает `.claude/skills/triage/SKILL.md` (скилл нельзя вызвать как скилл из-за `disable-model-invocation`, поэтому `prompt` велит прочитать файл и выполнить его) и ставит категорию и состояние.
+
+- Событие: `issues` с `types: [opened]`.
+- Фильтры: автор — `OWNER`/`MEMBER`/`COLLABORATOR`, не бот; у issue нет ни одной метки состояния (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). Подготовленные скиллами тикеты приходят уже с меткой, и прогон получает статус `skipped`.
+- Права: `contents: read`, `id-token: write`, у checkout `persist-credentials: false`; метки и комментарии ставит токен Claude GitHub App (`claude[bot]`), токен подписки — секрет `CLAUDE_CODE_OAUTH_TOKEN`. Из инструментов агенту доступны чтение файлов и `gh issue view/list/edit/comment`, `gh label list`; `gh issue close` и запись в код не разрешены.
+- Тайм-аут задания — 15 минут; один прогон на issue (`concurrency`).
+- Делает: ставит одну категорию (`bug` или `enhancement`) и одно состояние — `needs-triage` или `needs-info` (с вопросами автору по шаблону Triage Notes). Каждый комментарий начинается с дисклеймера скилла.
+- Не делает: не ставит `ready-for-agent`, `ready-for-human`, `wontfix`, не закрывает issue, не меняет код. Эти решения принимает владелец. Запрет на `ready-for-*` и `wontfix` держится на `prompt`: `gh issue edit` технически позволил бы поставить любую метку.
+- Где смотреть: вкладка [Actions](https://github.com/LMZN007/ai-for-developers-project-387/actions), воркфлоу «Claude triage». Пропущенные из-за фильтров прогоны видны там со статусом `skipped`.
+
 ### Почему Claude, а не OpenCode
 
 Задание допускает другого агента с теми же сценариями. OpenCode в Actions работает через API-ключ провайдера модели, а подписку Claude к стороннему агенту подключать нельзя. Claude Code работает с подпиской официально, поэтому выбран он.

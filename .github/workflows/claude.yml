@@ -22,8 +22,10 @@ concurrency:
 
 jobs:
   claude:
+    # The command must open the comment, so a comment that only mentions `/oc` in its text does not
+    # spend a runner (the action would skip it anyway).
     if: >-
-      contains(github.event.comment.body, '/oc')
+      startsWith(github.event.comment.body, '/oc')
       && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
       && github.event.comment.user.type != 'Bot'
     runs-on: ubuntu-latest

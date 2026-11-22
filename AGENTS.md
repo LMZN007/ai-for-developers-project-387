@@ -14,6 +14,7 @@
 - `mise run lint`, `mise run format`, `mise run typecheck`, `mise run test` — по отдельности.
 - `mise run gen` — пересобрать OpenAPI и SDK из контракта.
 - Один тест: `pnpm --filter @calls-booking/api exec vitest run -t "<имя теста>"`.
+- Агент в GitHub (Claude Code): комментарий `/oc <задача>` в issue или PR от владельца или участника с правом записи; воркфлоу — `.github/workflows/claude.yml`.
 
 ## Устройство
 

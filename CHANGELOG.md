@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/LMZN007/ai-for-developers-project-387/compare/v0.5.0...v0.5.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* комментарии бота больше не отменяют ожидающую команду /oc ([#26](https://github.com/LMZN007/ai-for-developers-project-387/issues/26)) ([#27](https://github.com/LMZN007/ai-for-developers-project-387/issues/27)) ([d646455](https://github.com/LMZN007/ai-for-developers-project-387/commit/d6464557f9f7f799c41d6ac5b358efbbf19d9486))
+
 ## [0.5.0](https://github.com/LMZN007/ai-for-developers-project-387/compare/v0.4.0...v0.5.0) (2026-11-22)
 
 

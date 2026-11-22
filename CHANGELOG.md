@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/LMZN007/ai-for-developers-project-387/compare/v0.2.0...v0.3.0) (2026-11-22)
+
+
+### Features
+
+* агент Claude Code отвечает на команды /oc в issues и PR ([#2](https://github.com/LMZN007/ai-for-developers-project-387/issues/2)) ([#3](https://github.com/LMZN007/ai-for-developers-project-387/issues/3)) ([16f4535](https://github.com/LMZN007/ai-for-developers-project-387/commit/16f4535fa53112fcf7e312b9dfd39f43f2f5de99))
+
 ## [0.2.0](https://github.com/LMZN007/ai-for-developers-project-386/compare/v0.1.1...v0.2.0) (2026-11-18)
 
 

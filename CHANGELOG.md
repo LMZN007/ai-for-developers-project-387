@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/LMZN007/ai-for-developers-project-387/compare/v0.5.1...v0.6.0) (2026-11-22)
+
+
+### Features
+
+* ежедневный аудит приложения агентом ([#29](https://github.com/LMZN007/ai-for-developers-project-387/issues/29)) ([#30](https://github.com/LMZN007/ai-for-developers-project-387/issues/30)) ([972a0ed](https://github.com/LMZN007/ai-for-developers-project-387/commit/972a0ed1389c61e8448afdbcbd4bed416c6751c1))
+
+
+### Bug Fixes
+
+* **web:** описание страницы для поисковиков ([#36](https://github.com/LMZN007/ai-for-developers-project-387/issues/36), [#34](https://github.com/LMZN007/ai-for-developers-project-387/issues/34)) ([#37](https://github.com/LMZN007/ai-for-developers-project-387/issues/37)) ([e65d92a](https://github.com/LMZN007/ai-for-developers-project-387/commit/e65d92afce2a2ca8c39ca8cce1b504fabbb2de0c))
+
 ## [0.5.1](https://github.com/LMZN007/ai-for-developers-project-387/compare/v0.5.0...v0.5.1) (2026-11-22)
 
 

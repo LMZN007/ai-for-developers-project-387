@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Installs the tools pinned in mise.toml; the postinstall hook runs `mise run setup`.
+      - name: Setup mise
+        uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # `mise run setup` already downloaded Chromium; Ubuntu also needs its system libraries.
+      - name: Install Chromium system libraries
+        run: mise exec -- pnpm --filter @calls-booking/e2e exec playwright install-deps chromium
+
+      - name: Run checks
+        run: mise run check
+
+  # The same Dockerfile that hosting builds: the image must build and the app must start by itself
+  # on the port from PORT.
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the image
+        run: docker build --tag calls-booking .
+
+      - name: Start a container on PORT=8080
+        run: docker run --detach --name app --publish 8080:8080 --env PORT=8080 calls-booking
+
+      - name: Check the API and a page answer on that port
+        run: |
+          for _ in $(seq 1 30); do
+            curl --silent --fail --output /dev/null http://127.0.0.1:8080/api/health && break
+            sleep 1
+          done
+          curl --silent --fail http://127.0.0.1:8080/api/health | grep --quiet '"status":"ok"'
+          curl --silent --fail http://127.0.0.1:8080/book/consultation | grep --quiet 'id="root"'
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8080/api/event-types/missing)" = 404
+
+      - name: Show the container logs
+        if: failure()
+        run: docker logs app

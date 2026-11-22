@@ -1,0 +1,20 @@
+# Rebuilt inside the image: dependencies, generated contract code and build output.
+**/node_modules
+**/generated
+**/dist
+**/test-results
+**/playwright-report
+
+# Not needed to build the app.
+.git
+.github
+.claude
+.agents
+docs
+**/*.log
+.DS_Store
+
+# Never send secrets into the build context.
+.env
+.env.*
+.mcp.local.json

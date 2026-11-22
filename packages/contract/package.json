@@ -1,0 +1,22 @@
+{
+  "name": "@calls-booking/contract",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./openapi.yaml": "./generated/openapi.yaml"
+  },
+  "scripts": {
+    "gen": "tsp compile . && openapi-typescript generated/openapi.yaml -o generated/schema.d.ts"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "@typespec/compiler": "1.18.0",
+    "@typespec/http": "1.18.0",
+    "@typespec/openapi": "1.18.0",
+    "@typespec/openapi3": "1.18.0",
+    "openapi-typescript": "7.13.0"
+  }
+}

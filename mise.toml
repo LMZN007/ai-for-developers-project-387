@@ -1,0 +1,81 @@
+# One toolchain for developers, git hooks and CI: `mise install`, then `mise run check`.
+min_version = "2026.11.9"
+
+[settings]
+experimental = true # required for [daemons]
+
+[tools]
+node = "26.13.1"
+pnpm = "12.21.0"
+hk = "2.12.0"
+pkl = "0.33.0"
+oxlint = "1.94.0"
+oxfmt = "0.79.0"
+jactionlint = "2.6.0"
+shellcheck = "0.11.0"
+pitchfork = "2.34.0"
+
+[env]
+API_PORT = "3000"
+
+[hooks]
+postinstall = { task = "setup" }
+
+[tasks.setup]
+description = "Install dependencies, the Chromium browser for e2e and the git hooks"
+run = [
+  "pnpm install --frozen-lockfile",
+  "pnpm --filter @calls-booking/e2e exec playwright install chromium",
+  "hk install --mise",
+]
+
+[tasks.gen]
+description = "Generate OpenAPI and the TypeScript SDK from the TypeSpec contract"
+run = "pnpm --filter @calls-booking/contract run gen"
+
+[tasks.lint]
+description = "Run oxlint and the oxfmt format check"
+run = "hk check --all --step oxlint --step oxfmt"
+
+[tasks.format]
+description = "Format files and apply safe lint fixes"
+run = "hk fix --all"
+
+[tasks.typecheck]
+description = "Type-check every package"
+depends = ["gen"]
+run = "pnpm -r run typecheck"
+
+[tasks.test]
+description = "Run every test suite"
+depends = ["gen"]
+run = "pnpm -r run test"
+
+[tasks.e2e]
+description = "Run the browser scenario against a real server (Playwright, Chromium)"
+depends = ["gen"]
+run = "pnpm --filter @calls-booking/e2e run e2e"
+
+[tasks.check]
+description = "Run every check: the same set CI runs"
+run = "hk check --all"
+
+[tasks.start]
+description = "Run the app as in production: build the web app, then one server for the API and the pages"
+depends = ["gen"]
+run = "pnpm --filter @calls-booking/web exec vite build && WEB_ROOT=apps/web/dist node apps/api/src/server.ts"
+
+[tasks.dev]
+description = "Start the API and the web app in the background"
+depends = ["gen"]
+daemons = ["api", "web"]
+run = "mise daemons ls"
+
+[daemons.api]
+run = "exec pnpm --filter @calls-booking/api run dev"
+ready_port = 3000
+
+[daemons.web]
+run = "exec pnpm --filter @calls-booking/web exec vite --host 127.0.0.1 --port 5173 --strictPort"
+ready_port = 5173
+depends = ["api"]

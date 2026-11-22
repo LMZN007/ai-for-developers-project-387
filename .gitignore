@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+coverage/
+
+# Generated code (rebuilt from the TypeSpec contract)
+tsp-output/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and OS files
+*.log
+.DS_Store
+
+# Local mise overrides
+mise.local.toml
+generated/
+
+# Personal Claude Code settings
+.claude/settings.local.json
+
+# Playwright run artifacts
+test-results/
+playwright-report/

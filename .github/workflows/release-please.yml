@@ -1,0 +1,26 @@
+name: Release Please
+
+# Keeps a Release PR open with the next version and CHANGELOG.md built from Conventional Commits;
+# merging that PR tags the release. Settings live in release-please-config.json.
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # release branch, tags and GitHub Releases
+      issues: write # `autorelease: *` labels on the Release PR
+      pull-requests: write # open and update the Release PR
+    steps:
+      # Uses GITHUB_TOKEN, so CI does not run on the Release PR itself; it runs on main after the merge.
+      - name: Open or update the Release PR
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0

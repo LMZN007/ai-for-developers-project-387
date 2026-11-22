@@ -1,0 +1,69 @@
+amends "package://github.com/jdx/hk/releases/download/v2.12.0/hk@2.12.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v2.12.0/hk@2.12.0#/Builtins.pkl"
+
+// Files owned by Hexlet: the course forbids editing them, so formatters and linters skip them.
+local hexletFiles = List(".github/workflows/hexlet-check.yml", ".github/workflows/README.md")
+
+// Third-party agent skills installed by `npx skills add`; `skills update` overwrites them.
+local vendoredSkills = List(".agents/**", ".claude/skills/**", "skills-lock.json")
+
+// Written by release-please in its own Markdown style; formatting it would fight every Release PR.
+local releasePleaseFiles = List("CHANGELOG.md")
+
+// Fast checks on staged files: run on every commit.
+local fast = new Mapping<String, Step> {
+    ["oxfmt"] = (Builtins.oxfmt) {
+        exclude = List("**/pnpm-lock.yaml") + hexletFiles + vendoredSkills + releasePleaseFiles
+    }
+    ["oxlint"] = (Builtins.ox_lint) {
+        exclude = vendoredSkills
+    }
+    ["jactionlint"] = (Builtins.jactionlint) {
+        exclude = hexletFiles
+    }
+}
+
+// Whole-project checks: run before push, in `mise run check` and in CI.
+local all = (fast) {
+    // The SDK types are generated (not committed), so build them first.
+    ["gen"] {
+        check = "pnpm run --silent gen"
+    }
+    ["typecheck"] {
+        depends = "gen"
+        check = "pnpm -r --silent run typecheck"
+    }
+    ["test"] {
+        depends = "gen"
+        check = "pnpm -r --silent run test"
+    }
+}
+
+hooks {
+    ["pre-commit"] {
+        fix = true
+        stash = "git"
+        steps = fast
+    }
+    ["commit-msg"] {
+        steps {
+            ["conventional-commit"] = Builtins.check_conventional_commit
+        }
+    }
+    ["pre-push"] {
+        steps = all
+    }
+    // `mise run check` and CI add the browser scenario; pre-push skips it so a push does not wait for a browser.
+    ["check"] {
+        steps = (all) {
+            ["e2e"] {
+                depends = "gen"
+                check = "pnpm --filter @calls-booking/e2e run --silent e2e"
+            }
+        }
+    }
+    ["fix"] {
+        fix = true
+        steps = fast
+    }
+}

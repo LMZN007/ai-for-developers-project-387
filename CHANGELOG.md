@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/LMZN007/ai-for-developers-project-387/compare/v0.4.0...v0.5.0) (2026-11-22)
+
+
+### Features
+
+* авторевью PR, предел запусков и браузерная проверка ([#20](https://github.com/LMZN007/ai-for-developers-project-387/issues/20)) ([#21](https://github.com/LMZN007/ai-for-developers-project-387/issues/21)) ([2fc27cf](https://github.com/LMZN007/ai-for-developers-project-387/commit/2fc27cf627da91271c3f0de82348c2ef88dded23))
+* отмена записи владельцем ([#10](https://github.com/LMZN007/ai-for-developers-project-387/issues/10)) ([#24](https://github.com/LMZN007/ai-for-developers-project-387/issues/24)) ([d4b88bc](https://github.com/LMZN007/ai-for-developers-project-387/commit/d4b88bc7572f81e864ef0182d4702c9df83ef107))
+
 ## [0.4.0](https://github.com/LMZN007/ai-for-developers-project-387/compare/v0.3.1...v0.4.0) (2026-11-22)
 
 

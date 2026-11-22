@@ -15,11 +15,6 @@ on:
 
 permissions: {}
 
-# One run per issue or PR at a time; a new command waits for the previous one instead of racing it.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.issue.number || github.event.pull_request.number }}
-  cancel-in-progress: false
-
 jobs:
   claude:
     # The command must open the comment, so a comment that only mentions `/oc` in its text does not
@@ -28,6 +23,13 @@ jobs:
       startsWith(github.event.comment.body, '/oc')
       && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
       && github.event.comment.user.type != 'Bot'
+    # One run per issue or PR at a time; a new command waits for the previous one instead of racing it.
+    # The group is on the job, not the workflow: a run for a comment that `if` skips (bot replies,
+    # review comments) then never joins it. At the workflow level such a run took the single pending
+    # place and cancelled a human command that was waiting there.
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     # The agent also implements specs (the `implement-spec` skill): subagents, tests, the checks and
     # e2e take far longer than a reply in a thread, so the limit is 60 minutes.

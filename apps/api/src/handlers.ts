@@ -83,6 +83,24 @@ export function createHandlers({ store, now }: HandlerDependencies) {
         .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
     },
 
+    // The lookup, the "started" check and the delete happen in one store call (Store#cancelBooking).
+    async Bookings_cancel(
+      request: FastifyRequest<{ Params: { id: string } }>,
+      reply: FastifyReply,
+    ): Promise<void> {
+      const result = store.cancelBooking(request.params.id, now());
+      if (result === "not_found") {
+        throw new ApiProblem(404, { code: "not_found", message: "Такой записи нет" });
+      }
+      if (result === "started") {
+        throw new ApiProblem(409, {
+          code: "booking_started",
+          message: "Встреча уже началась или прошла, отменить запись нельзя",
+        });
+      }
+      reply.code(204);
+    },
+
     // No `await` from here to the store call: the time check and the insert must not interleave
     // with another request (see Store#addBookingIfFree).
     async EventTypes_createBooking(

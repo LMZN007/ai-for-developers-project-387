@@ -92,7 +92,7 @@ model FieldError {
 /** The single error body every failing operation returns. */
 @error
 model ApiError {
-  code: "validation_error" | "not_found" | "slug_taken" | "time_conflict" | "internal_error";
+  code: "validation_error" | "not_found" | "slug_taken" | "time_conflict" | "booking_started" | "internal_error";
 
   /** Human-readable text in Russian. */
   message: string;
@@ -199,5 +199,22 @@ namespace Bookings {
   op list(): {
     @statusCode statusCode: 200;
     @body body: Booking[];
+  };
+
+  /**
+   * Cancels an upcoming booking: the booking is deleted without a trace, so its time is free for
+   * other guests again. A booking that has started (or ended) cannot be cancelled: 409
+   * `booking_started`. An unknown or already cancelled id: 404 `not_found`.
+   */
+  @delete
+  @route("/{id}")
+  op cancel(@path id: string): {
+    @statusCode statusCode: 204;
+  } | {
+    @statusCode statusCode: 404;
+    @body body: ApiError;
+  } | {
+    @statusCode statusCode: 409;
+    @body body: ApiError;
   };
 }

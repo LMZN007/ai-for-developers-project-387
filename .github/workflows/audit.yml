@@ -1,0 +1,202 @@
+name: Audit
+
+# A daily audit of the public app by Lighthouse CI. The data is collected by code, without a model;
+# then a Claude session (the Claude GitHub App, `claude[bot]`, on the owner's Claude subscription:
+# CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`) reads the summary and opens an issue only for a
+# finding that has no issue yet. The report is an artifact of the run and is never committed.
+on:
+  schedule:
+    - cron: "17 3 * * *" # once a day, off the round hour
+  workflow_dispatch:
+
+permissions: {}
+
+# Audits never cancel each other: a manual run must not interrupt the scheduled one (and the other
+# way round), because a cancelled agent could stop half-way through the issues.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    # Warm-up up to ~2.5 minutes, Lighthouse on two pages a few minutes, the agent a few more.
+    # 25 minutes is a margin, and a hung run does not hold a runner for 6 hours.
+    timeout-minutes: 25
+    # Standard mode: the action trades the OIDC token for a Claude App token, and that token creates
+    # issues. The workflow's own GITHUB_TOKEN only reads (and uploads the artifact needs no scope).
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # Repository variable (Settings, Variables): the address of the public service, no trailing slash.
+      APP_URL: ${{ vars.APP_URL }}
+      REPORT_DIR: audit-report
+      HEAD_SHA: ${{ github.sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      # A sleeping Render service needs about a minute to wake up: poll /api/health for ~2.5 minutes.
+      # A failure here is not a job failure: it is recorded as "no data" in the summary.
+      - name: Warm up the app
+        id: warm
+        run: |
+          set -uo pipefail
+          mkdir -p "$REPORT_DIR"
+          if [ -z "${APP_URL:-}" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "reason=Repository variable APP_URL is not set." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base="${APP_URL%/}"
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error --output /dev/null --max-time 10 "$base/api/health"; then
+              echo "App answered on attempt $attempt."
+              echo "ready=true" >> "$GITHUB_OUTPUT"
+              echo "base=$base" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "ready=false" >> "$GITHUB_OUTPUT"
+          echo "reason=The app did not answer $base/api/health in about 2.5 minutes." >> "$GITHUB_OUTPUT"
+
+      # The Lighthouse CI version is pinned exactly; the Chrome is the runner's own. One run per page:
+      # the findings are deterministic checks, and performance (the noisy part) has a coarse threshold.
+      # The report (HTML and JSON) goes to the report folder through the filesystem target.
+      - name: Run Lighthouse CI
+        id: lhci
+        if: steps.warm.outputs.ready == 'true'
+        continue-on-error: true
+        env:
+          BASE: ${{ steps.warm.outputs.base }}
+        run: |
+          set -euo pipefail
+          export CHROME_PATH
+          CHROME_PATH="$(command -v google-chrome)"
+          npx --yes @lhci/cli@0.16.1 collect \
+            --url="$BASE/book" --url="$BASE/admin" \
+            --numberOfRuns=1 \
+            --settings.chromeFlags="--no-sandbox --headless=new"
+          npx --yes @lhci/cli@0.16.1 upload \
+            --target=filesystem --outputDir="$REPORT_DIR/lighthouse"
+
+      # The summary is made by code. A finding has a stable key `lighthouse:<page>:<audit id>`.
+      # What counts as a finding:
+      # - an audit of accessibility, best-practices or seo with score < 1: such a check either passes
+      #   or fails deterministically, so every failure is a concrete defect (informative, manual and
+      #   not-applicable audits have no score to fail and are left out);
+      # - performance is one finding per page, and only when the category is below 0.5 (Lighthouse's
+      #   "poor" band): the score swings with the runner's CPU and a cold Render service, so a single
+      #   audit failing is noise, and one finding per page keeps a bad day from opening a dozen issues.
+      # When the app did not answer or Lighthouse failed, the status is "no_data": the agent must not
+      # read an empty list as "no defects".
+      - name: Summarize the findings
+        if: always()
+        env:
+          READY: ${{ steps.warm.outputs.ready }}
+          WARM_REASON: ${{ steps.warm.outputs.reason }}
+          LHCI_OUTCOME: ${{ steps.lhci.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$REPORT_DIR"
+          if [ "$READY" = "true" ] && [ "$LHCI_OUTCOME" = "success" ] && compgen -G ".lighthouseci/lhr-*.json" > /dev/null; then
+            jq -s --arg sha "$HEAD_SHA" --arg url "$RUN_URL" '
+              def page: (.requestedUrl | sub("^https?://[^/]+"; "") | sub("[?#].*$"; "")) | if . == "" then "/" else . end;
+              def text: ((.displayValue // "") + " " + (.description // "")) | gsub("\\s+"; " ") | .[0:300];
+              ([ .[] as $lhr | ($lhr | page) as $p
+                 | (["accessibility", "best-practices", "seo"][] as $c | $lhr.categories[$c].auditRefs[]?.id) as $id
+                 | $lhr.audits[$id]
+                 | select(.scoreDisplayMode == "binary" or .scoreDisplayMode == "numeric")
+                 | select(.score != null and .score < 1)
+                 | { key: "lighthouse:\($p):\($id)", page: $p, audit_id: $id, title: .title, score: .score, details: text } ]
+               + [ .[] as $lhr | ($lhr | page) as $p
+                 | $lhr.categories.performance
+                 | select(.score != null and .score < 0.5)
+                 | { key: "lighthouse:\($p):performance", page: $p, audit_id: "performance",
+                     title: "Производительность страницы ниже 0.5",
+                     score: .score,
+                     details: ([ .auditRefs[] | select(.weight > 0) | $lhr.audits[.id]
+                                 | select(.score != null and .score < 0.9)
+                                 | "\(.id) (\(.displayValue // "n/a"))" ] | join(", ")) } ])
+              | unique_by(.key) as $f
+              | { status: "ok", reason: null, head_sha: $sha, run_url: $url, findings: $f }
+            ' .lighthouseci/lhr-*.json > "$REPORT_DIR/findings.json"
+          else
+            if [ "$READY" != "true" ]; then reason="$WARM_REASON"; else reason="Lighthouse CI failed or produced no report."; fi
+            jq -n --arg sha "$HEAD_SHA" --arg url "$RUN_URL" --arg reason "$reason" \
+              '{ status: "no_data", reason: $reason, head_sha: $sha, run_url: $url, findings: [] }' \
+              > "$REPORT_DIR/findings.json"
+          fi
+          cat "$REPORT_DIR/findings.json"
+
+      - name: Run Claude audit agent
+        id: agent
+        uses: anthropics/claude-code-action@cb5e706113afc5dc4f36cdcf5d784ca88f351823 # v1.0.286
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Ты агент ежедневного аудита приложения в ${{ github.repository }}. Прогон: ${{ env.RUN_URL }}
+            (commit ${{ env.HEAD_SHA }}). Код не меняй. Единственное изменение в репозитории, которое ты
+            делаешь, — создание issue.
+
+            1. Прочитай `${{ env.REPORT_DIR }}/findings.json`: `status`, `reason`, `run_url`, `head_sha` и
+               список `findings` (`key`, `page`, `audit_id`, `title`, `score`, `details`).
+            2. Если `status` равен `no_data`, данных нет: приложение не ответило или Lighthouse не отработал.
+               Это не значит, что дефектов нет. Issue не создавай, ничего не закрывай, в отчёте напиши
+               «нет данных» и причину из `reason`.
+            3. Иначе один раз получи все issue аудита, без поиска:
+               `gh issue list --label audit --state all --limit 500 --json number,state,title,url,body`.
+               Поиск (`--search`) не используй: его индекс отстаёт, и только что созданный issue в нём
+               ещё не виден. Для каждой находки issue с её ключом — тот, в теле которого есть точная
+               строка `Ключ находки: <key>` (ключ в обратных кавычках).
+               - Есть открытый issue с этим ключом: пропусти находку, в отчёте укажи его номер.
+               - Нет ни открытого, ни закрытого: создай issue.
+               - Есть только закрытые: создай новый issue с заголовком «Повторно: <title>». В теле дай ссылку
+                 на прежний (последний закрытый) issue и на PR, который его закрыл:
+                 `gh issue view <номер> --json closedByPullRequestsReferences`. Если PR не найден, так и
+                 напиши в теле.
+            4. Тело нового issue (сначала запиши его в файл `${{ env.REPORT_DIR }}/body-<n>.md`, затем
+               `gh issue create --title ... --body-file ... --label audit`):
+               - первая строка: `Ключ находки: <key>` (ключ в обратных кавычках, как в п. 3);
+               - ссылка на прогон (`run_url`);
+               - страница (`page`) и проверка (`audit_id`);
+               - что не так: по `title` и `details`;
+               - как проверить: открыть страницу, запустить Lighthouse на ней и убедиться, что проверка
+                 `audit_id` проходит.
+               Если метки `audit` ещё нет (`gh label list`), создай её: `gh label create audit`.
+            5. Ничего не закрывай, не комментируй и не редактируй чужие issue.
+            6. Запиши итог в `${{ env.REPORT_DIR }}/agent-report.md`: что найдено, какие issue созданы
+               (номера), что пропущено и почему. Тексты пиши по-русски, по терминам `GLOSSARY.md`.
+          # Minimal for these operations: read the summary and the glossary; write only into the report
+          # folder (the report and the issue bodies); `gh` only lists, views and creates issues, and
+          # creates the `audit` label if it is missing. No `gh issue close/edit/comment`, no code edits.
+          claude_args: >-
+            --model claude-sonnet-5-5
+            --allowedTools "Read,Glob,Grep,Write(audit-report/**),Edit(audit-report/**),Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*),Bash(gh label list:*),Bash(gh label create:*)"
+
+      # The agent's own execution log is kept next to the summary, the Lighthouse report and its report.
+      - name: Collect the agent log
+        if: always()
+        env:
+          EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$REPORT_DIR"
+          if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then
+            cp "$EXECUTION_FILE" "$REPORT_DIR/execution.json"
+          fi
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: audit-${{ github.run_id }}
+          path: audit-report/
+          if-no-files-found: error
+          retention-days: 30

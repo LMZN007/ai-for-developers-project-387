@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/LMZN007/ai-for-developers-project-387/compare/v0.3.0...v0.3.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* агент запускается, только если комментарий начинается с /oc ([#6](https://github.com/LMZN007/ai-for-developers-project-387/issues/6)) ([#7](https://github.com/LMZN007/ai-for-developers-project-387/issues/7)) ([bff47ee](https://github.com/LMZN007/ai-for-developers-project-387/commit/bff47ee2768fc27f76db5308474a1e18190ab4f9))
+
 ## [0.3.0](https://github.com/LMZN007/ai-for-developers-project-387/compare/v0.2.0...v0.3.0) (2026-11-22)
 
 
